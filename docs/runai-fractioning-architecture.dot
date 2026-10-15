@@ -1,0 +1,91 @@
+digraph RunAIFractioning {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    pad="0.28",
+    nodesep="0.46",
+    ranksep="0.58",
+    splines=ortho,
+    fontname="Arial",
+    fontsize=18,
+    label="Validated architecture for GPU memory fractioning on Amazon EKS",
+    labelloc="t",
+    labeljust="l"
+  ];
+
+  node [shape=plain, fontname="Arial"];
+  edge [
+    color="#5F6B7A",
+    fontcolor="#344054",
+    fontname="Arial",
+    fontsize=10,
+    penwidth=1.6,
+    arrowsize=0.75
+  ];
+
+  workstation [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#AAB3BF">
+      <TR><TD BGCOLOR="#232F3E"><FONT COLOR="white"><B>Operator workstation</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT">AWS CLI and Packer<BR/>eksctl and Helm<BR/>kubectl</TD></TR>
+    </TABLE>
+  >];
+
+  subgraph cluster_eks {
+    label="Amazon EKS 1.36 in us-east-2";
+    labelloc="t";
+    labeljust="l";
+    color="#FF9900";
+    fontcolor="#232F3E";
+    fontname="Arial";
+    fontsize=15;
+    penwidth=2.2;
+    style="rounded";
+    margin=22;
+
+    system [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="9" COLOR="#AAB3BF">
+        <TR><TD BGCOLOR="#146EB4"><FONT COLOR="white"><B>System node</B></FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>EC2 m7i.large</B><BR/>GPU Operator controller<BR/>KAI Scheduler 0.18.5<BR/>Fractioning controller 0.1.7</TD></TR>
+      </TABLE>
+    >];
+
+    gpu [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8" COLOR="#98A2B3">
+        <TR><TD BGCOLOR="#232F3E"><FONT COLOR="white"><B>GPU node</B></FONT></TD></TR>
+        <TR><TD ALIGN="LEFT"><B>EC2 g5.xlarge</B><BR/>Custom EKS AL2023 AMI<BR/>R615.71.09 and toolkit 1.20.1</TD></TR>
+        <TR><TD BGCOLOR="#F2F4F7">containerd 2.3.5 and NRI<BR/>fractiond and MPSd</TD></TR>
+        <TR><TD>
+          <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="7" CELLPADDING="7" COLOR="#667085">
+            <TR>
+              <TD BGCOLOR="#EAF2FF"><B>Pod A</B><BR/>8 GiB contract<BR/>6 GiB allocation</TD>
+              <TD BGCOLOR="#EAF8E2"><B>Pod B</B><BR/>8 GiB contract<BR/>6 GiB allocation</TD>
+            </TR>
+          </TABLE>
+        </TD></TR>
+        <TR><TD BGCOLOR="#76B900"><FONT COLOR="white"><B>One NVIDIA A10G</B><BR/>23,028 MiB physical memory</FONT></TD></TR>
+      </TABLE>
+    >];
+
+    system -> gpu [label="KAI placement"];
+  }
+
+  metrics [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="10" COLOR="#AAB3BF">
+      <TR><TD BGCOLOR="#7F56D9"><FONT COLOR="white"><B>Operational evidence</B></FONT></TD></TR>
+      <TR><TD ALIGN="LEFT">Per-Pod GPU memory metrics<BR/>GPU UUID attribution<BR/>limit violations</TD></TR>
+    </TABLE>
+  >];
+
+  result [label=<
+    <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="9" COLOR="#F79009">
+      <TR><TD BGCOLOR="#FFF4E5"><B>Validated behavior</B></TD></TR>
+      <TR><TD ALIGN="LEFT">Both Pods share one GPU UUID<BR/>9 GiB allocation rejected by 8 GiB limit</TD></TR>
+    </TABLE>
+  >];
+
+  workstation -> system [label="provision and operate"];
+  gpu -> metrics [label="metricsd"];
+  gpu -> result [label="NRI injection and MPS enforcement"];
+
+  { rank=same; metrics; result; }
+}

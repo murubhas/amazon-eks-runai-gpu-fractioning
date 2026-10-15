@@ -1,0 +1,9 @@
+.DS_Store
+.state/
+walkthrough.env
+ami/manifest.json
+packer_cache/
+crash.log
+*.log
+*.tfstate
+*.tfstate.*

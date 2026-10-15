@@ -1,0 +1,65 @@
+cdi:
+  enabled: true
+  nriPluginEnabled: false
+
+driver:
+  enabled: false
+  version: "615.71.09"
+
+toolkit:
+  enabled: false
+  version: v1.20.1
+
+devicePlugin:
+  enabled: true
+  version: v0.20.1
+
+gfd:
+  version: v0.20.1
+
+mig:
+  strategy: none
+
+migManager:
+  enabled: false
+
+dcgm:
+  enabled: true
+
+dcgmExporter:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+
+ccManager:
+  enabled: false
+
+kataManager:
+  enabled: false
+
+kataSandboxDevicePlugin:
+  enabled: false
+
+sandboxDevicePlugin:
+  enabled: false
+
+operator:
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  tolerations:
+    - operator: Exists
+
+daemonsets:
+  tolerations:
+    - operator: Exists
+
+node-feature-discovery:
+  master:
+    tolerations:
+      - operator: Exists
+  worker:
+    tolerations:
+      - operator: Exists
+  gc:
+    tolerations:
+      - operator: Exists

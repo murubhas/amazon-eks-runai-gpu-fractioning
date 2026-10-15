@@ -1,0 +1,61 @@
+# Validated Results
+
+The sample was validated on October 15, 2026 in `us-east-2` on a disposable
+Amazon EKS 1.36 cluster with one On-Demand `g5.xlarge` worker. Account IDs,
+instance IDs, subnet IDs, AMI IDs, node names, and GPU UUIDs are intentionally
+omitted.
+
+## Host stack
+
+| Check | Observed result |
+| --- | --- |
+| GPU | NVIDIA A10G, 23028 MiB |
+| Driver | 615.71.09 open kernel modules |
+| NVIDIA Container Toolkit | 1.20.1-1 |
+| containerd | 2.3.5 |
+| cgroups | cgroup v2 |
+| NRI | Socket present |
+| GPU Operator | ClusterPolicy ready |
+| Device plugin | 0.20.1, `nvidia.com/gpu=1` advertised |
+| KAI Scheduler | 0.18.5 |
+| GPU Fractioning Operator | 0.1.7, ready |
+
+## Acceptance evidence
+
+| Acceptance criterion | Observed result | Status |
+| --- | --- | --- |
+| Whole-GPU baseline | One Pod Running and one Pending | Passed |
+| Co-location | Two contracts used one node and GPU UUID | Passed |
+| Bounded device view | Each Pod saw 8192 MiB | Passed |
+| In-limit allocation | Each Pod allocated 6144 MiB | Passed |
+| Over-limit allocation | A 9216 MiB allocation failed with out of memory | Passed |
+| Per-Pod metrics | Approximately 6.70 GB attributed to each Pod | Passed |
+
+## Pod state evidence
+
+The positive test placed both 8 GiB contracts on the same GPU node:
+
+```text
+NAME             READY   STATUS    NODE
+fraction-8gi-a   1/1     Running   <same-gpu-node>
+fraction-8gi-b   1/1     Running   <same-gpu-node>
+```
+
+The negative test completed successfully after the 8 GiB contract rejected a
+9 GiB CUDA allocation:
+
+```text
+NAME                      READY   STATUS      NODE
+fraction-8gi-over-limit   0/1     Completed   <gpu-node>
+```
+
+`Completed` is the expected state because the probe exits with code 0 only when
+the oversized allocation is rejected.
+
+## Cleanup evidence
+
+After evidence capture, the test namespace and Helm releases were removed and
+the disposable cluster was deleted. Independent AWS queries returned no EKS
+cluster, cluster CloudFormation stacks, cluster-tagged EC2 instances, or
+sample-tagged VPC. The reusable custom AMI and its encrypted EBS snapshot were
+preserved intentionally.

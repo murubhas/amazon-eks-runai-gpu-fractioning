@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cuda-memory-probe
+  namespace: runai-fractioning-test
+data:
+  probe.cu: |
+    #include <cuda_runtime.h>
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <unistd.h>
+
+    int main(int argc, char **argv) {
+      if (argc != 4) {
+        fprintf(stderr, "usage: %s <allocation-mib> <hold-seconds> <expect-failure>\n", argv[0]);
+        return 2;
+      }
+
+      const size_t allocation_mib = strtoull(argv[1], NULL, 10);
+      const unsigned int hold_seconds = strtoul(argv[2], NULL, 10);
+      const int expect_failure = atoi(argv[3]);
+      const char *names[] = {
+        "NVIDIA_VISIBLE_DEVICES",
+        "NVIDIA_GPU_MEMORY_REQUEST",
+        "NVIDIA_GPU_MEMORY_LIMIT",
+        "CUDA_MPS_PIPE_DIRECTORY",
+      };
+
+      for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); ++i) {
+        const char *value = getenv(names[i]);
+        printf("%s=%s\n", names[i], value ? value : "<unset>");
+      }
+
+      int device_count = 0;
+      cudaError_t status = cudaGetDeviceCount(&device_count);
+      if (status != cudaSuccess || device_count < 1) {
+        fprintf(stderr, "cudaGetDeviceCount failed: %s; count=%d\n", cudaGetErrorString(status), device_count);
+        return 3;
+      }
+
+      cudaDeviceProp properties;
+      cudaGetDeviceProperties(&properties, 0);
+      size_t free_bytes = 0;
+      size_t total_bytes = 0;
+      cudaMemGetInfo(&free_bytes, &total_bytes);
+      printf("device=%s visible_total_mib=%zu visible_free_mib=%zu requested_allocation_mib=%zu\n",
+             properties.name,
+             total_bytes / 1024 / 1024,
+             free_bytes / 1024 / 1024,
+             allocation_mib);
+
+      void *allocation = NULL;
+      status = cudaMalloc(&allocation, allocation_mib * 1024ULL * 1024ULL);
+      if (status != cudaSuccess) {
+        printf("allocation_failed=%s\n", cudaGetErrorString(status));
+        fflush(stdout);
+        return expect_failure ? 0 : 4;
+      }
+
+      status = cudaMemset(allocation, 0, allocation_mib * 1024ULL * 1024ULL);
+      if (status != cudaSuccess) {
+        fprintf(stderr, "cudaMemset failed: %s\n", cudaGetErrorString(status));
+        return 5;
+      }
+
+      printf("allocation_succeeded_mib=%zu\n", allocation_mib);
+      fflush(stdout);
+      if (expect_failure) {
+        fprintf(stderr, "expected the allocation to be rejected by the configured limit\n");
+        cudaFree(allocation);
+        return 6;
+      }
+
+      sleep(hold_seconds);
+      cudaFree(allocation);
+      return 0;
+    }

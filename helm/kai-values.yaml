@@ -1,0 +1,37 @@
+global:
+  gpuSharingMode: NvFractions
+  nvFractions:
+    set: true
+  namespaceLabelSelector:
+    runai-fractioning: enabled
+  daemonsetsTolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+
+topologyMigration:
+  enabled: false
+
+defaultPriorityClasses:
+  enabled: false
+
+kaiConfig:
+  render: true
+
+kaiConfigDeployer:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+gpu-fractioning:
+  daemonTolerations:
+    - key: nvidia.com/gpu
+      operator: Exists
+      effect: NoSchedule
+  prometheus:
+    enabled: false
+  metricsAgent:
+    enabled: true
+  supportSmSharing: true
+  skipGpuStackVersionChecks: false
