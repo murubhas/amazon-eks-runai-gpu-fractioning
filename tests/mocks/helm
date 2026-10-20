@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Mock `helm` for scripts/10-cleanup.sh regression tests.
+# Reports no releases installed, so cleanup's "helm status ... || skip"
+# checks always skip the uninstall step -- out of scope for these tests.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'helm %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+if [[ "$1" == "status" ]]; then
+  echo "release not found" >&2
+  exit 1
+fi
+
+exit 0

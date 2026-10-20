@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Mock `kubectl` for scripts/10-cleanup.sh regression tests.
+# Cleanup only uses kubectl to delete the test namespace and (via common.sh)
+# to resolve the current context; both are harmless no-ops for these tests.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'kubectl %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+# real kubectl accepts --kubeconfig/--context anywhere in the arg list;
+# common.sh's run_kubectl/kube_context always pass --kubeconfig (and
+# sometimes --context) before the subcommand, so strip any --flag/value
+# pairs before pattern-matching on the subcommand itself.
+args=()
+skip_next=false
+for arg in "$@"; do
+  if [[ "${skip_next}" == "true" ]]; then
+    skip_next=false
+    continue
+  fi
+  case "${arg}" in
+    --kubeconfig|--context|--request-timeout)
+      skip_next=true
+      continue
+      ;;
+  esac
+  args+=("${arg}")
+done
+
+if [[ "${args[0]:-}" == "config" && "${args[1]:-}" == "current-context" ]]; then
+  echo "mock-context"
+  exit 0
+fi
+
+if [[ "${args[0]:-}" == "config" && "${args[1]:-}" == "get-contexts" ]]; then
+  echo "mock-context"
+  exit 0
+fi
+
+exit 0

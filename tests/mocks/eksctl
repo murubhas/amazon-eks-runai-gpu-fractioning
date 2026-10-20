@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Mock `eksctl` for scripts/10-cleanup.sh regression tests.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'eksctl %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+if [[ "$1" == "delete" && "$2" == "cluster" ]]; then
+  if [[ "${MOCK_EKSCTL_DELETE_CLUSTER_SUCCEEDS:-true}" == "true" ]]; then
+    if [[ -n "${MOCK_CLUSTER_DELETED_FLAG:-}" ]]; then
+      : >"${MOCK_CLUSTER_DELETED_FLAG}"
+    fi
+    exit 0
+  else
+    echo "mock eksctl: delete cluster failed (simulated DELETE_FAILED)" >&2
+    exit 1
+  fi
+fi
+
+echo "mock eksctl: unhandled call: $*" >&2
+exit 1
