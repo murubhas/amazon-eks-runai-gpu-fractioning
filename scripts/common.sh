@@ -56,6 +56,36 @@ run_kubectl() {
   kubectl --kubeconfig "${KUBECONFIG}" --context "$(kube_context)" "$@"
 }
 
+# Retries a kubectl call against the cluster API to absorb a genuinely
+# transient failure, such as a freshly-created endpoint's DNS record taking a
+# few seconds to become locally resolvable. Callers MUST ensure the kubeconfig
+# already targets the correct, current endpoint (e.g. via `aws eks
+# update-kubeconfig`) before relying on this: retrying cannot recover from a
+# stale or wrong endpoint, which never resolves no matter how many attempts.
+# Each attempt carries its own --request-timeout, so a single hung call
+# cannot stall past that bound; combined with the attempt cap, total elapsed
+# time is bounded by roughly attempts * (timeout + delay) rather than by
+# attempt count alone. Succeeds as soon as one attempt succeeds; fails with
+# the last error after the final attempt.
+run_kubectl_retry() {
+  local attempts="${API_RETRY_ATTEMPTS:-8}"
+  local delay_seconds="${API_RETRY_DELAY_SECONDS:-5}"
+  local request_timeout="${API_RETRY_REQUEST_TIMEOUT:-10s}"
+  local attempt=1
+  while true; do
+    if run_kubectl --request-timeout "${request_timeout}" "$@"; then
+      return 0
+    fi
+    if (( attempt >= attempts )); then
+      echo "run_kubectl failed after ${attempts} attempts: kubectl $*" >&2
+      return 1
+    fi
+    echo "kubectl call did not succeed yet (attempt ${attempt}/${attempts}); retrying in ${delay_seconds}s in case the endpoint's DNS record is still propagating." >&2
+    sleep "${delay_seconds}"
+    attempt=$((attempt + 1))
+  done
+}
+
 render_cluster_config() {
   sed \
     -e "s/__CLUSTER_NAME__/${CLUSTER_NAME}/g" \
