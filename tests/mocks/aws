@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# Mock `aws` CLI for scripts/10-cleanup.sh regression tests.
+#
+# Behaviour is driven entirely by environment variables set per test case
+# (see tests/run-cleanup-tests.sh). Every call this mock receives is appended
+# to "${MOCK_CALL_LOG}" (one line per call, space-joined args) so a test can
+# assert which destructive calls were or were not issued, independent of the
+# script's exit code.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf '%s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+# Finds the value immediately following a given flag, e.g. "--stack-name X" -> X.
+arg_after() {
+  local flag="$1"
+  shift
+  local args=("$@")
+  local i
+  for i in "${!args[@]}"; do
+    if [[ "${args[$i]}" == "${flag}" ]]; then
+      printf '%s' "${args[$((i + 1))]}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+service="$1"
+action="$2"
+shift 2
+
+case "${service} ${action}" in
+  "sts get-caller-identity")
+    echo '{"Account":"123456789012"}'
+    ;;
+
+  "eks describe-cluster")
+    effective_presence="${MOCK_DESCRIBE_CLUSTER:-not-found}"
+    if [[ -n "${MOCK_CLUSTER_DELETED_FLAG:-}" && -f "${MOCK_CLUSTER_DELETED_FLAG}" ]]; then
+      effective_presence="not-found"
+    fi
+    case "${effective_presence}" in
+      exists)
+        if [[ "$*" == *"--query"*"cluster.tags.project"* ]]; then
+          echo "${MOCK_CLUSTER_PROJECT_TAG:-amazon-eks-runai-gpu-fractioning}"
+        elif [[ "$*" == *"--query"*"cluster.tags.purpose"* ]]; then
+          echo "${MOCK_CLUSTER_PURPOSE_TAG:-disposable-sample-validation}"
+        elif [[ "$*" == *"resourcesVpcConfig"* ]]; then
+          echo "${MOCK_CLUSTER_VPC_ID:-vpc-aaa111}	${MOCK_CLUSTER_SG_ID:-sg-aaa111}"
+        else
+          echo '{"cluster":{"name":"mock"}}'
+        fi
+        ;;
+      not-found)
+        echo "An error occurred (ResourceNotFoundException) when calling the DescribeCluster operation: No cluster found for name: mock-cluster." >&2
+        exit 254
+        ;;
+      access-denied)
+        echo "An error occurred (AccessDeniedException) when calling the DescribeCluster operation: User is not authorized to perform eks:DescribeCluster." >&2
+        exit 255
+        ;;
+      *)
+        echo "unhandled MOCK_DESCRIBE_CLUSTER=${effective_presence}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  "eks update-kubeconfig")
+    : # no-op; writes nothing, just succeeds
+    ;;
+
+  "cloudformation describe-stacks")
+    query="$(arg_after --query "$@" || true)"
+    case "${MOCK_STACK:-absent}" in
+      absent)
+        echo "An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id eksctl-mock-cluster-cluster does not exist" >&2
+        exit 254
+        ;;
+      access-denied)
+        echo "An error occurred (AccessDeniedException) when calling the DescribeStacks operation: User is not authorized to perform cloudformation:DescribeStacks." >&2
+        exit 255
+        ;;
+      present)
+        if [[ -n "${MOCK_STACK_DELETED_FLAG:-}" && -f "${MOCK_STACK_DELETED_FLAG}" ]]; then
+          case "${query}" in
+            *StackStatus*) echo "DELETE_COMPLETE" ;;
+            *) echo "None" ;;
+          esac
+          exit 0
+        fi
+        case "${query}" in
+          *StackStatus*)
+            echo "${MOCK_STACK_STATUS:-CREATE_COMPLETE}"
+            ;;
+          *Tags*)
+            if [[ "${query}" == *"'project'"* ]]; then
+              echo "${MOCK_STACK_PROJECT_TAG:-amazon-eks-runai-gpu-fractioning}"
+            elif [[ "${query}" == *"'purpose'"* ]]; then
+              echo "${MOCK_STACK_PURPOSE_TAG:-disposable-sample-validation}"
+            else
+              echo "None"
+            fi
+            ;;
+          *Outputs*)
+            echo "${MOCK_STACK_VPC_OUTPUT:-vpc-bbb222}"
+            ;;
+          *)
+            echo "None"
+            ;;
+        esac
+        ;;
+      *)
+        echo "unhandled MOCK_STACK=${MOCK_STACK}" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  "cloudformation delete-stack")
+    # Simulate the stack transitioning to DELETE_COMPLETE so the script's
+    # final verification call to stack_status() sees the post-recovery
+    # state, not the original DELETE_FAILED. Recorded in MOCK_CALL_LOG above
+    # regardless of this side effect.
+    if [[ -n "${MOCK_STACK_DELETED_FLAG:-}" ]]; then
+      : >"${MOCK_STACK_DELETED_FLAG}"
+    fi
+    ;;
+
+  "cloudformation wait")
+    : # stack-delete-complete; no-op
+    ;;
+
+  "ec2 describe-network-interfaces")
+    echo "${MOCK_SG_ENIS:-}"
+    ;;
+
+  "ec2 describe-security-groups")
+    if [[ "$*" == *"--group-ids"* ]]; then
+      query="$(arg_after --query "$@" || true)"
+      case "${query}" in
+        *VpcId*) echo "${MOCK_SG_VPC_ID:-${MOCK_STACK_VPC_OUTPUT:-vpc-bbb222}}" ;;
+        *GroupName*) echo "${MOCK_SG_GROUP_NAME:-eks-cluster-sg-mock-cluster-abc123}" ;;
+        *aws:eks:cluster-name*) echo "${MOCK_SG_CLUSTER_TAG:-mock-cluster}" ;;
+        *) echo "None" ;;
+      esac
+    else
+      # describe-security-groups --filters ... (orphan lookup by exact tag)
+      echo "${MOCK_SG_FILTER_RESULT:-}"
+    fi
+    ;;
+
+  "ec2 delete-security-group")
+    : # recorded in MOCK_CALL_LOG; no-op otherwise
+    ;;
+
+  *)
+    echo "mock aws: unhandled call: ${service} ${action} $*" >&2
+    exit 1
+    ;;
+esac
