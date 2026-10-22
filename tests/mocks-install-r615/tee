@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Mock `tee` for the install-r615.sh regression tests. The script writes the
+# discovered driver version with `printf ... | sudo tee
+# /etc/eks-runai-nvidia-driver-version`. A test can't write to /etc, so when
+# the target is that file we redirect the write to MOCK_ETC_VERSION_FILE and
+# the test asserts on it; any other tee target (e.g. the modprobe.d conf) is
+# written to a throwaway path under MOCK_ETC_DIR. stdin is always consumed and
+# echoed like real `tee`.
+set -euo pipefail
+
+target="${1:-}"
+# Drop a leading -a if present (append mode); not used by this script but be safe.
+[[ "${target}" == "-a" ]] && shift && target="${1:-}"
+
+dest="/dev/null"
+case "${target}" in
+  /etc/eks-runai-nvidia-driver-version)
+    dest="${MOCK_ETC_VERSION_FILE:-/dev/null}"
+    ;;
+  *)
+    if [[ -n "${MOCK_ETC_DIR:-}" ]]; then
+      dest="${MOCK_ETC_DIR}/$(basename "${target}")"
+    fi
+    ;;
+esac
+
+content="$(cat)"
+printf '%s\n' "${content}"
+[[ "${dest}" != "/dev/null" ]] && printf '%s\n' "${content}" >"${dest}"
+exit 0

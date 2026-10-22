@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Mock `nvidia-ctk` for the install-r615.sh regression tests: records the call
+# (runtime configure) and succeeds.
+set -euo pipefail
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'nvidia-ctk %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+exit 0

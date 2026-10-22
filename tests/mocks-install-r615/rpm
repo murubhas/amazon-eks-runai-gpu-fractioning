@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Mock `rpm` for the install-r615.sh regression tests.
+#
+#   rpm -q --qf '%{VERSION}\n' nvidia-driver  -> version discovery. Returns
+#       MOCK_RPM_INSTALLED_VERSION, or fails (empty + nonzero) when
+#       MOCK_RPM_DISCOVERY_FAILS=true, standing in for "the driver package
+#       is not actually installed / discovery failed".
+#   rpm -qa                                   -> installed package list used
+#       by the post-install verification grep. Includes the discovered
+#       version unless MOCK_RPM_QA_OMITS_VERSION=true.
+#   rpm -q nvidia-container-toolkit           -> succeeds.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'rpm %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+version="${MOCK_RPM_INSTALLED_VERSION:-615.71.10}"
+
+joined="$*"
+if [[ "${joined}" == *"--qf"* && "${joined}" == *"nvidia-driver"* ]]; then
+  if [[ "${MOCK_RPM_DISCOVERY_FAILS:-false}" == "true" ]]; then
+    echo "package nvidia-driver is not installed" >&2
+    exit 1
+  fi
+  printf '%s\n' "${version}"
+  exit 0
+fi
+
+if [[ "${joined}" == "-qa"* || "${joined}" == *" -qa"* || "$1" == "-qa" ]]; then
+  if [[ "${MOCK_RPM_QA_OMITS_VERSION:-false}" == "true" ]]; then
+    printf '%s\n' "nvidia-driver-0.0.0-1.x86_64" "kmod-nvidia-open-dkms-0.0.0-1.x86_64"
+  else
+    printf '%s\n' \
+      "nvidia-driver-${version}-1.x86_64" \
+      "nvidia-driver-cuda-${version}-1.x86_64" \
+      "kmod-nvidia-open-dkms-${version}-1.x86_64"
+  fi
+  exit 0
+fi
+
+# rpm -q nvidia-container-toolkit and anything else: succeed quietly.
+if [[ "${joined}" == *"nvidia-container-toolkit"* ]]; then
+  echo "nvidia-container-toolkit-1.20.1-1.x86_64"
+fi
+exit 0

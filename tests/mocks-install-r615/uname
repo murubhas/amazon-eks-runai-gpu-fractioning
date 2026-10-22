@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Mock `uname` for the install-r615.sh regression tests. Returns a fixed
+# 6.18.x kernel release for `uname -r` so the script's kernel-package case
+# resolves deterministically (matching the AL2023 kernel observed live).
+set -euo pipefail
+if [[ "${1:-}" == "-r" ]]; then
+  printf '%s\n' "${MOCK_UNAME_R:-6.18.54-121.166.amzn2023.x86_64}"
+  exit 0
+fi
+printf 'Linux\n'
+exit 0
