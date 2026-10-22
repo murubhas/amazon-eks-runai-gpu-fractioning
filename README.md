@@ -305,10 +305,10 @@ evidence.
 
 The NVIDIA driver version tracks the current point release of the R615 open
 kernel-module stream in NVIDIA's CUDA repository. The October 15, 2026 run
-observed 615.71.09; the stack was re-validated on 615.71.10 after the stream
-advanced, with identical results. The build installs whatever point release
-the 615-open stream currently serves, so expect this value to move forward
-over time.
+observed 615.71.09; the full walkthrough was re-validated end to end on
+615.71.10 after the stream advanced, with identical results. The build
+installs whatever point release the 615-open stream currently serves, so
+expect this value to move forward over time.
 
 ## Production considerations
 
