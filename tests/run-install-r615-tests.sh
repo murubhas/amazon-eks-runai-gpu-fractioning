@@ -285,6 +285,71 @@ test_sudo_mock_refuses_unmocked_command() {
   return 1
 }
 
+# --- Durable mock-coverage guard (honors the PRINCIPLE behind Muru's finding,
+# not just the literal rm/sudo instance): every external command install-r615.sh
+# invokes -- via `sudo <cmd>` OR bare -- must have a mock in the harness dir, so
+# nothing can fall through to a host binary on either path. This fails the
+# moment the installer gains an unmocked command.
+#
+# The `sudo <cmd>` set is extracted dynamically (that grep is unambiguous, and
+# it is exactly the path Muru flagged), so a newly-added `sudo <something>` with
+# no mock fails here automatically. The bare external commands install-r615.sh
+# uses are a small, stable set asserted explicitly below; BARE_EXTERNAL must be
+# kept in sync if the installer gains a new bare external command (the
+# locked-down-PATH behaviour is covered by the sudo path + the rm/sentinel
+# tests; a full bare-command tokenizer was deliberately avoided as too brittle).
+test_every_installer_command_has_a_mock() {
+  local missing=0 cmd
+
+  # 1) Dynamic: every `sudo <cmd>` in the installer must have a mock.
+  local sudo_cmds
+  sudo_cmds="$(grep -oE 'sudo +(-[A-Za-z] +)*[a-z][a-zA-Z0-9_-]+' "${INSTALL_SCRIPT}" \
+    | sed -E 's/.* ([a-z][a-zA-Z0-9_-]+)$/\1/' | sort -u)"
+  for cmd in ${sudo_cmds}; do
+    if [[ ! -x "${MOCKS_DIR}/${cmd}" ]]; then
+      echo "    FAIL: installer runs 'sudo ${cmd}' but there is no mock at ${MOCKS_DIR}/${cmd}" >&2
+      missing=1
+    fi
+  done
+
+  # 2) Explicit: bare (non-sudo) external commands install-r615.sh invokes that
+  #    mutate or query host state and therefore MUST be mocked. (grep/sort are
+  #    benign read-only coreutils and are intentionally not mocked.)
+  local BARE_EXTERNAL=(rpm dkms uname)
+  for cmd in "${BARE_EXTERNAL[@]}"; do
+    if [[ ! -x "${MOCKS_DIR}/${cmd}" ]]; then
+      echo "    FAIL: installer invokes bare '${cmd}' but there is no mock at ${MOCKS_DIR}/${cmd}" >&2
+      missing=1
+    fi
+  done
+
+  # 3) Cross-check: assert the installer does NOT invoke a bare external command
+  #    we haven't accounted for. Pull first-word tokens, drop shell
+  #    keywords/builtins and the known benign coreutils and our accounted sets;
+  #    anything left is an unaccounted command that must be triaged.
+  local accounted="rpm dkms uname grep sort sudo dnf nvidia-ctk systemctl tee rm"
+  local keywords="if then else elif fi for while until do done case esac function return local export set exit echo printf test true false"
+  local tokens tok
+  tokens="$(grep -oE '(^|[;&|]|\$\()[[:space:]]*[a-z][a-zA-Z0-9_-]+[[:space:]]' "${INSTALL_SCRIPT}" \
+    | sed -E 's/.*[^a-zA-Z0-9_-]([a-z][a-zA-Z0-9_-]+)[[:space:]]*$/\1/' | sort -u)"
+  for tok in ${tokens}; do
+    # Only flag tokens that look like a real command invocation AND are not a
+    # variable assignment (those contain '=' and won't match this token form).
+    case " ${accounted} ${keywords} " in
+      *" ${tok} "*) continue ;;
+    esac
+    # A token we did not account for: verify it is actually an external command
+    # on this host (not a local var/function name) before flagging, to avoid
+    # false positives on identifiers.
+    if command -v "${tok}" >/dev/null 2>&1 && [[ "$(command -v "${tok}")" == /* ]]; then
+      echo "    FAIL: installer appears to invoke unaccounted external command '${tok}' -- add a mock and list it in BARE_EXTERNAL/accounted." >&2
+      missing=1
+    fi
+  done
+
+  [[ "${missing}" -eq 0 ]]
+}
+
 run_test "discovery drift .09 -> .10 uses the discovered version throughout" \
   test_discovery_drift_09_to_10
 run_test "discovery further drift .10 -> .11 uses the discovered version" \
@@ -311,6 +376,8 @@ run_test "real host filesystem is never touched (sentinel survives)" \
   test_real_filesystem_is_never_touched
 run_test "hardened sudo mock refuses an unmocked command" \
   test_sudo_mock_refuses_unmocked_command
+run_test "every external command the installer invokes has a mock (sudo + bare)" \
+  test_every_installer_command_has_a_mock
 
 echo
 echo "=== ${pass_count} passed, ${fail_count} failed ==="
