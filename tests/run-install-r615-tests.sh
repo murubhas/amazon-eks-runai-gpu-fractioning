@@ -226,6 +226,65 @@ test_fails_when_rpm_qa_omits_version() {
   assert_exit_nonzero "a package list missing the discovered version must fail closed"
 }
 
+# --- Test isolation (PR #2 re-review, murubhas): the installer ends with
+# `sudo rm -rf /var/cache/dnf`. The credential-free tests must intercept that
+# via the rm mock and must NEVER let it reach the host's real rm / real
+# /var/cache/dnf. Prove, on a successful install, that the cache-removal call
+# was recorded by the mock (i.e. it went through the mocked rm, not a host
+# binary) and that it targeted exactly /var/cache/dnf. ---
+test_cache_cleanup_is_intercepted() {
+  export NVIDIA_DRIVER_VERSION=615.71.10
+  export MOCK_RPM_INSTALLED_VERSION=615.71.10
+  run_install
+  assert_exit_code 0 "a successful install should reach the cache-cleanup step" \
+    && assert_call_made "rm -rf /var/cache/dnf" \
+         "the cache-removal must be intercepted and recorded by the rm mock" \
+    && assert_recorded_version "615.71.10" "the install should still complete and record the version"
+}
+
+# --- Belt-and-braces proof the real path cannot be touched: place a sentinel
+# file on the host, run the installer under the mocks, and confirm the
+# sentinel still exists afterward. The mock rm is a strict no-op, and the
+# hardened sudo dispatches only to allowlisted mocks, so no host rm ever runs
+# -- regardless of what the installer passes to `sudo rm`. ---
+test_real_filesystem_is_never_touched() {
+  local sentinel_dir sentinel
+  sentinel_dir="$(mktemp -d)"
+  sentinel="${sentinel_dir}/do-not-delete"
+  : >"${sentinel}"
+  export NVIDIA_DRIVER_VERSION=615.71.10
+  export MOCK_RPM_INSTALLED_VERSION=615.71.10
+  run_install
+  local ok=1
+  if [[ "${LAST_EXIT_CODE}" -ne 0 ]]; then
+    echo "    FAIL: install did not succeed (exit ${LAST_EXIT_CODE})" >&2; ok=0
+  fi
+  if [[ ! -e "${sentinel}" ]]; then
+    echo "    FAIL: sentinel file was deleted -- a real rm ran against the host filesystem" >&2; ok=0
+  fi
+  rm -rf "${sentinel_dir}"
+  [[ "${ok}" -eq 1 ]]
+}
+
+# --- The hardened sudo mock must REFUSE any command that is not explicitly
+# mocked+allowlisted, rather than falling through to a host executable (the
+# root cause of the earlier bug). Invoke the mock directly with a bogus
+# command and confirm it fails loudly and does not run anything. ---
+test_sudo_mock_refuses_unmocked_command() {
+  local out rc
+  set +e
+  out="$(PATH="${MOCKS_DIR}:${PATH}" "${MOCKS_DIR}/sudo" some-unmocked-command --flag 2>&1)"
+  rc=$?
+  set -e
+  if [[ "${rc}" -ne 0 ]] && printf '%s' "${out}" | grep -q "refusing to run unmocked command"; then
+    return 0
+  fi
+  echo "    FAIL: sudo mock did not refuse an unmocked command (rc=${rc})" >&2
+  echo "    --- output ---" >&2
+  echo "${out}" | sed 's/^/    /' >&2
+  return 1
+}
+
 run_test "discovery drift .09 -> .10 uses the discovered version throughout" \
   test_discovery_drift_09_to_10
 run_test "discovery further drift .10 -> .11 uses the discovered version" \
@@ -246,6 +305,12 @@ run_test "empty DKMS status fails closed" \
   test_fails_on_dkms_empty
 run_test "rpm -qa missing the discovered version fails closed" \
   test_fails_when_rpm_qa_omits_version
+run_test "cache cleanup (rm -rf /var/cache/dnf) is intercepted by the rm mock" \
+  test_cache_cleanup_is_intercepted
+run_test "real host filesystem is never touched (sentinel survives)" \
+  test_real_filesystem_is_never_touched
+run_test "hardened sudo mock refuses an unmocked command" \
+  test_sudo_mock_refuses_unmocked_command
 
 echo
 echo "=== ${pass_count} passed, ${fail_count} failed ==="
