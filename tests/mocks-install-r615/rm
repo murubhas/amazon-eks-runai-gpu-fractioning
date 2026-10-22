@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Mock `rm` for the install-r615.sh regression tests. install-r615.sh ends
+# with `sudo rm -rf /var/cache/dnf`; with no mock this would resolve to the
+# host's real rm and could delete the host DNF cache (or fail on a protected
+# one). This mock records the call and is a strict no-op -- it never touches
+# the real filesystem -- so the credential-free tests neither modify nor
+# depend on any host path. If a test ever needs rm to actually remove a
+# fixture, that is out of scope here; this mock is intentionally inert.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'rm %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+exit 0
