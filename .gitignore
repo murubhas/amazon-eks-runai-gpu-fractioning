@@ -2,6 +2,7 @@
 .state/
 walkthrough.env
 ami/manifest.json
+ami/installed-driver-version.txt
 packer_cache/
 crash.log
 *.log

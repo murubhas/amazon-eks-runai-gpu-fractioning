@@ -58,8 +58,41 @@ if [[ ! "${ami_id}" =~ ^ami-[0-9a-f]+$ ]]; then
   exit 1
 fi
 
+# install-r615.sh records the driver version actually installed from the
+# CUDA repo (which can differ from the configured branch selector once the
+# repo advances to a later point release) to /etc/eks-runai-nvidia-driver-
+# version on the built instance. The Packer template downloads that file
+# to ami/installed-driver-version.txt before the instance is imaged. Read
+# it here, validate it, and store it keyed to this specific AMI ID so a
+# later run with a different AMI can never silently reuse a stale value.
+installed_version_file="${ROOT_DIR}/ami/installed-driver-version.txt"
+if [[ ! -s "${installed_version_file}" ]]; then
+  echo "Packer did not produce ${installed_version_file}; cannot determine the actual installed driver version." >&2
+  exit 1
+fi
+installed_driver_version="$(<"${installed_version_file}")"
+if [[ ! "${installed_driver_version}" =~ ^615\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Unexpected installed driver version read from ${installed_version_file}: '${installed_driver_version}'" >&2
+  exit 1
+fi
+rm -f "${installed_version_file}"
+
 aws ec2 wait image-available --region "${AWS_REGION}" --image-ids "${ami_id}"
+
+# Packer tagged the AMI with the configured branch selector at build-start,
+# before the actual point release was known. Overwrite that tag now with
+# the version actually discovered on the image so the published AMI
+# metadata never understates the real driver version.
+aws ec2 create-tags \
+  --region "${AWS_REGION}" \
+  --resources "${ami_id}" \
+  --tags "Key=nvidia-driver-version,Value=${installed_driver_version}"
+
 printf '%s\n' "${ami_id}" >"${STATE_DIR}/ami-id"
+printf '%s\n' "${installed_driver_version}" >"${STATE_DIR}/ami-id.${ami_id}.installed-driver-version"
+printf '%s\n' "${installed_driver_version}" >"${STATE_DIR}/installed-driver-version"
+
+echo "Requested branch ${NVIDIA_DRIVER_VERSION}; built AMI ${ami_id} has driver ${installed_driver_version}."
 
 aws ec2 describe-images \
   --region "${AWS_REGION}" \

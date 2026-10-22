@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Mock `eksctl` for the add-gpu-node regression tests
+# (tests/run-build-ami-tests.sh). Records the call so a test can assert
+# whether node-group creation was reached, and otherwise succeeds. The
+# metadata-propagation fix this suite covers is about refusing to create a
+# node group when the discovered driver version is unavailable, so the only
+# eksctl interaction that matters is "was `create nodegroup` reached at all".
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'eksctl %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+exit 0

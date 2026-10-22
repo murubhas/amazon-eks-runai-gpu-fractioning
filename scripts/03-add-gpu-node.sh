@@ -17,7 +17,28 @@ if [[ ! "${ami_id}" =~ ^ami-[0-9a-f]+$ ]]; then
   exit 1
 fi
 
-render_gpu_nodegroup_config "${ami_id}"
+# Require the driver version actually discovered when this AMI was built
+# (scripts/02-build-ami.sh), keyed to this exact AMI ID -- never fall back
+# to the configured NVIDIA_DRIVER_VERSION env var, which only reflects the
+# requested R615 branch and silently mislabels the node group if the repo
+# installed a later point release. This also prevents reusing a stale
+# recorded version left over from building a *different* AMI: if AMI_ID is
+# overridden to something scripts/02-build-ami.sh did not just produce,
+# the keyed file for that specific AMI ID must exist.
+installed_version_file="${STATE_DIR}/ami-id.${ami_id}.installed-driver-version"
+if [[ ! -s "${installed_version_file}" ]]; then
+  echo "No recorded installed driver version for ${ami_id} at ${installed_version_file}." >&2
+  echo "Run scripts/02-build-ami.sh to build (and record the version for) this AMI, or set AMI_ID to an AMI it built." >&2
+  exit 1
+fi
+installed_driver_version="$(<"${installed_version_file}")"
+if [[ ! "${installed_driver_version}" =~ ^615\.[0-9]+\.[0-9]+$ ]]; then
+  echo "Unexpected installed driver version recorded for ${ami_id}: '${installed_driver_version}'" >&2
+  exit 1
+fi
+echo "Using AMI ${ami_id} with recorded driver version ${installed_driver_version}."
+
+render_gpu_nodegroup_config "${ami_id}" "${installed_driver_version}"
 
 if aws eks describe-nodegroup \
   --cluster-name "${CLUSTER_NAME}" \
