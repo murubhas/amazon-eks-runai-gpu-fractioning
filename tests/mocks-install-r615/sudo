@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Mock `sudo` for the install-r615.sh regression tests: strip the leading
+# `sudo` (and any `sudo -n`/`-E`-style flags) and re-dispatch to the mocked
+# tool on PATH, so `sudo dnf ...`, `sudo rpm ...`, `sudo tee ...`, etc. all
+# run the same mocks a bare invocation would. Records nothing itself; the
+# re-dispatched tool records into MOCK_CALL_LOG.
+set -euo pipefail
+
+# Drop any sudo option flags (e.g. -n, -E, -H) before the command word.
+while [[ "${1:-}" == -* ]]; do
+  shift
+done
+
+exec "$@"

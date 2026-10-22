@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Mock `systemctl` for the install-r615.sh regression tests: records the call
+# (enable nvidia-persistenced) and succeeds.
+set -euo pipefail
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'systemctl %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+exit 0

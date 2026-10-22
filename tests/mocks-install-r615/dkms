@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Mock `dkms` for the install-r615.sh regression tests.
+#
+# `dkms status -m nvidia -v <version>` normally prints a line the script then
+# greps for "<version>.*installed". MOCK_DKMS_ERROR controls the failure
+# modes install-r615.sh must fail closed on:
+#   notbuilt -> status prints but without "installed" (module not built)
+#   empty    -> status prints nothing (the grep then fails)
+#   exit     -> dkms itself exits nonzero
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'dkms %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+# Pull the version passed via `-v <version>`.
+version=""
+prev=""
+for a in "$@"; do
+  [[ "${prev}" == "-v" ]] && version="${a}"
+  prev="${a}"
+done
+version="${version:-615.71.10}"
+
+case "${MOCK_DKMS_ERROR:-none}" in
+  exit)
+    echo "Error! Could not locate dkms.conf" >&2
+    exit 1
+    ;;
+  empty)
+    : # print nothing; the script's grep for "installed" will fail
+    ;;
+  notbuilt)
+    printf 'nvidia/%s: added\n' "${version}"
+    ;;
+  none|*)
+    printf 'nvidia/%s, %s, x86_64: installed\n' "${version}" "$(uname -r 2>/dev/null || echo 6.18.0)"
+    ;;
+esac
+exit 0
