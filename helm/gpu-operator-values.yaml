@@ -4,7 +4,7 @@ cdi:
 
 driver:
   enabled: false
-  version: "615.71.09"
+  version: "615.71.10"
 
 toolkit:
   enabled: false

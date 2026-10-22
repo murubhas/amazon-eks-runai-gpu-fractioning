@@ -29,7 +29,7 @@ variable "subnet_id" {
 
 variable "nvidia_driver_version" {
   type    = string
-  default = "615.71.09"
+  default = "615.71.10"
 }
 
 variable "ami_name" {
