@@ -5,12 +5,17 @@ Amazon EKS 1.36 cluster with one On-Demand `g5.xlarge` worker. Account IDs,
 instance IDs, subnet IDs, AMI IDs, node names, and GPU UUIDs are intentionally
 omitted.
 
+The NVIDIA driver version tracks the current point release of the R615 open
+kernel-module stream. The October 15, 2026 run observed 615.71.09; the host
+stack was re-validated on 615.71.10 after the stream advanced, with identical
+results. The driver value below reflects the current 615-open point release.
+
 ## Host stack
 
 | Check | Observed result |
 | --- | --- |
 | GPU | NVIDIA A10G, 23028 MiB |
-| Driver | 615.71.09 open kernel modules |
+| Driver | 615.71.10 open kernel modules |
 | NVIDIA Container Toolkit | 1.20.1-1 |
 | containerd | 2.3.5 |
 | cgroups | cgroup v2 |
