@@ -116,7 +116,7 @@ AWS_REGION=us-east-2
 CLUSTER_NAME=runai-fractioning-blog
 EKS_VERSION=1.36
 GPU_INSTANCE_TYPE=g5.xlarge
-NVIDIA_DRIVER_VERSION=615.71.09
+NVIDIA_DRIVER_VERSION=615.71.10
 
 # Authentication option 1: named profile
 # AWS_PROFILE=my-profile
@@ -292,7 +292,7 @@ This implementation was validated on October 15, 2026 with:
 | Amazon EKS | 1.36 |
 | EC2 GPU instance | `g5.xlarge`, NVIDIA A10G 23028 MiB |
 | Amazon Linux | EKS-optimized AL2023 standard base image |
-| NVIDIA driver | 615.71.09 open kernel modules |
+| NVIDIA driver | 615.71.10 open kernel modules |
 | NVIDIA Container Toolkit | 1.20.1-1 |
 | containerd | 2.3.5 |
 | NVIDIA GPU Operator | 26.7.1 |
@@ -302,6 +302,13 @@ This implementation was validated on October 15, 2026 with:
 
 See [validated results](docs/VALIDATED-RESULTS.md) for the measured acceptance
 evidence.
+
+The NVIDIA driver version tracks the current point release of the R615 open
+kernel-module stream in NVIDIA's CUDA repository. The October 15, 2026 run
+observed 615.71.09; the full walkthrough was re-validated end to end on
+615.71.10 after the stream advanced, with identical results. The build
+installs whatever point release the 615-open stream currently serves, so
+expect this value to move forward over time.
 
 ## Production considerations
 

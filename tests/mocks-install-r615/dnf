@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Mock `dnf` for the install-r615.sh regression tests. Records each call and
+# succeeds, except where a MOCK_* flag injects a failure for a specific
+# subcommand so the test can prove install-r615.sh fails closed (never
+# proceeds to a successful build) on a real dnf error.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'dnf %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+joined="$*"
+case "${joined}" in
+  *"module install"*)
+    if [[ "${MOCK_DNF_MODULE_INSTALL_FAILS:-false}" == "true" ]]; then
+      echo "Error: Unable to find a match: nvidia-driver:615-open/default" >&2
+      exit 1
+    fi
+    ;;
+  *"versionlock add"*)
+    if [[ "${MOCK_DNF_VERSIONLOCK_FAILS:-false}" == "true" ]]; then
+      echo "Error: versionlock add failed" >&2
+      exit 1
+    fi
+    ;;
+esac
+
+exit 0

@@ -1,16 +1,26 @@
 # Validated Results
 
-The sample was validated on October 15, 2026 in `us-east-2` on a disposable
-Amazon EKS 1.36 cluster with one On-Demand `g5.xlarge` worker. Account IDs,
-instance IDs, subnet IDs, AMI IDs, node names, and GPU UUIDs are intentionally
-omitted.
+The sample was first validated on October 15, 2026 in `us-east-2` on a
+disposable Amazon EKS 1.36 cluster with one On-Demand `g5.xlarge` worker, and
+the full walkthrough was re-validated end to end on October 22, 2026 under the
+same configuration. Account IDs, instance IDs, subnet IDs, AMI IDs, node names,
+and GPU UUIDs are intentionally omitted.
+
+The NVIDIA driver version tracks the current point release of the R615 open
+kernel-module stream. The October 15, 2026 run observed 615.71.09. After the
+stream advanced, the October 22, 2026 run rebuilt the custom AMI and reran the
+complete walkthrough — host stack inspection and every acceptance test — on
+615.71.10. Both the host stack and the acceptance results below were identical
+to the October 15 run except for the driver point release and the GPU UUID. The
+driver value below reflects the current 615-open point release; the October 15,
+2026 results remain valid as the original evidence on 615.71.09.
 
 ## Host stack
 
 | Check | Observed result |
 | --- | --- |
 | GPU | NVIDIA A10G, 23028 MiB |
-| Driver | 615.71.09 open kernel modules |
+| Driver | 615.71.10 open kernel modules |
 | NVIDIA Container Toolkit | 1.20.1-1 |
 | containerd | 2.3.5 |
 | cgroups | cgroup v2 |
@@ -21,6 +31,10 @@ omitted.
 | GPU Fractioning Operator | 0.1.7, ready |
 
 ## Acceptance evidence
+
+Every acceptance criterion below was reproduced on both the October 15, 2026
+run (driver 615.71.09) and the October 22, 2026 re-validation (driver
+615.71.10), with identical observed results.
 
 | Acceptance criterion | Observed result | Status |
 | --- | --- | --- |

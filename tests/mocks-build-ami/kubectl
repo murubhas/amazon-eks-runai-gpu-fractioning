@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Mock `kubectl` for the add-gpu-node regression tests
+# (tests/run-build-ami-tests.sh). Records the call and succeeds; the suite
+# only reaches kubectl on the happy path (node group created, then wait for
+# the node to be Ready) and does not assert on its output. It returns a
+# current-context name so common.sh's kube_context()/run_kubectl() wrapper
+# is satisfied without a real kubeconfig.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'kubectl %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+# Strip the leading `--kubeconfig <path>` that common.sh always passes so we
+# can match on the real subcommand that follows.
+args=("$@")
+rest=()
+i=0
+while (( i < ${#args[@]} )); do
+  case "${args[$i]}" in
+    --kubeconfig|--context|--request-timeout)
+      i=$((i + 2)) ;;
+    *)
+      rest+=("${args[$i]}")
+      i=$((i + 1)) ;;
+  esac
+done
+
+if [[ "${rest[0]:-}" == "config" ]]; then
+  case "${rest[1]:-}" in
+    current-context) echo "mock-context" ;;
+    get-contexts)    echo "mock-context" ;;
+  esac
+fi
+
+exit 0

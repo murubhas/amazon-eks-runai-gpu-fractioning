@@ -52,7 +52,7 @@ digraph RunAIFractioning {
     gpu [label=<
       <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="8" COLOR="#98A2B3">
         <TR><TD BGCOLOR="#232F3E"><FONT COLOR="white"><B>GPU node</B></FONT></TD></TR>
-        <TR><TD ALIGN="LEFT"><B>EC2 g5.xlarge</B><BR/>Custom EKS AL2023 AMI<BR/>R615.71.09 and toolkit 1.20.1</TD></TR>
+        <TR><TD ALIGN="LEFT"><B>EC2 g5.xlarge</B><BR/>Custom EKS AL2023 AMI<BR/>R615.71.10 and toolkit 1.20.1</TD></TR>
         <TR><TD BGCOLOR="#F2F4F7">containerd 2.3.5 and NRI<BR/>fractiond and MPSd</TD></TR>
         <TR><TD>
           <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="7" CELLPADDING="7" COLOR="#667085">

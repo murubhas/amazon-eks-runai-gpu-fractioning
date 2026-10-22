@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Mock `sudo` for the install-r615.sh regression tests: strip the leading
+# `sudo` (and any `sudo -n`/`-E`-style flags) and re-dispatch the command.
+#
+# Dispatch is restricted to an explicit allowlist of commands that have a
+# mock in THIS directory, and each is run from this directory by absolute
+# path -- never via PATH. This guarantees an unexpected or newly-added
+# `sudo <cmd>` in install-r615.sh can never fall through to a real host
+# executable (the earlier bug: `sudo rm -rf /var/cache/dnf` resolving to the
+# host's real rm). An unmocked command fails the test loudly instead.
+set -euo pipefail
+
+MOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Commands install-r615.sh invokes via sudo, each of which MUST have a mock
+# alongside this script. Keep in sync with the script; an unlisted command is
+# a deliberate hard failure.
+allowed=(dnf rpm dkms nvidia-ctk systemctl tee rm uname)
+
+# Drop any sudo option flags (e.g. -n, -E, -H) before the command word.
+while [[ "${1:-}" == -* ]]; do
+  shift
+done
+
+cmd="${1:-}"
+if [[ -z "${cmd}" ]]; then
+  echo "mock sudo: no command given" >&2
+  exit 1
+fi
+shift
+
+for a in "${allowed[@]}"; do
+  if [[ "${cmd}" == "${a}" ]]; then
+    if [[ ! -x "${MOCK_DIR}/${cmd}" ]]; then
+      echo "mock sudo: '${cmd}' is allowlisted but has no mock at ${MOCK_DIR}/${cmd}" >&2
+      exit 1
+    fi
+    exec "${MOCK_DIR}/${cmd}" "$@"
+  fi
+done
+
+echo "mock sudo: refusing to run unmocked command '${cmd}' -- it would fall through to a host binary. Add a mock in ${MOCK_DIR} and allowlist it." >&2
+exit 1

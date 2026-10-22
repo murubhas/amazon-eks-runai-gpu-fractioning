@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Mock `packer` for the build-ami regression tests
+# (tests/run-build-ami-tests.sh).
+#
+# `packer init` is a no-op. `packer build` simulates a successful Packer run
+# of ami/eks-al2023-r615.pkr.hcl: it writes ami/manifest.json (so the script
+# can extract the AMI id via jq) and, unless MOCK_PACKER_SKIP_VERSION_FILE is
+# set, it writes ami/installed-driver-version.txt with
+# MOCK_INSTALLED_DRIVER_VERSION -- standing in for the real template's
+# `provisioner "file"` download of /etc/eks-runai-nvidia-driver-version from
+# the built instance. This lets the test drive the exact
+# repo-advanced-the-point-release scenario the fix targets: the configured
+# branch selector (NVIDIA_DRIVER_VERSION) and the version actually installed
+# can differ, and the AMI metadata must reflect the installed one.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf 'packer %s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+ami_dir="${MOCK_AMI_DIR:?MOCK_AMI_DIR must be set by the test harness}"
+
+case "${1:-}" in
+  init)
+    : # no-op
+    ;;
+  build)
+    printf '{"builds":[{"artifact_id":"us-east-2:%s"}]}\n' \
+      "${MOCK_BUILT_AMI_ID:-ami-0built000000001}" \
+      >"${ami_dir}/manifest.json"
+    if [[ "${MOCK_PACKER_SKIP_VERSION_FILE:-false}" != "true" ]]; then
+      printf '%s\n' "${MOCK_INSTALLED_DRIVER_VERSION:-615.71.10}" \
+        >"${ami_dir}/installed-driver-version.txt"
+    fi
+    ;;
+  *)
+    echo "mock packer: unhandled subcommand: ${1:-}" >&2
+    exit 1
+    ;;
+esac
