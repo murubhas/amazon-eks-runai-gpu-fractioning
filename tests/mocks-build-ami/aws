@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Mock `aws` CLI for the build-ami / add-gpu-node regression tests
+# (tests/run-build-ami-tests.sh), which cover the driver-version metadata
+# propagation fix from PR #2 review (murubhas, 2026-10-22).
+#
+# Behaviour is driven entirely by environment variables set per test case.
+# Every call is appended to "${MOCK_CALL_LOG}" (one line per call,
+# space-joined args) so a test can assert which calls were or were not
+# issued -- in particular, that the resulting AMI's nvidia-driver-version
+# tag is overwritten with the discovered version via ec2 create-tags, and
+# that no node group is created when the recorded version is missing.
+set -euo pipefail
+
+if [[ -n "${MOCK_CALL_LOG:-}" ]]; then
+  printf '%s\n' "$*" >>"${MOCK_CALL_LOG}"
+fi
+
+service="$1"
+action="$2"
+shift 2
+
+case "${service} ${action}" in
+  "sts get-caller-identity")
+    echo '{"Account":"123456789012"}'
+    ;;
+
+  "eks describe-cluster")
+    # 02-build-ami.sh asks only for the VPC id.
+    echo "${MOCK_CLUSTER_VPC_ID:-vpc-aaa111}"
+    ;;
+
+  "ec2 describe-subnets")
+    echo "${MOCK_PACKER_SUBNET_ID:-subnet-public123}"
+    ;;
+
+  "ssm get-parameter")
+    echo "${MOCK_SOURCE_AMI_ID:-ami-source0000000001}"
+    ;;
+
+  "ec2 wait")
+    : # image-available; no-op
+    ;;
+
+  "ec2 create-tags")
+    : # recorded in MOCK_CALL_LOG; no-op otherwise
+    ;;
+
+  "ec2 describe-images")
+    # Final human-readable summary table; content is irrelevant to assertions.
+    echo "mock describe-images output"
+    ;;
+
+  "eks describe-nodegroup")
+    # 03-add-gpu-node.sh probes whether the node group already exists.
+    if [[ "${MOCK_NODEGROUP_EXISTS:-false}" == "true" ]]; then
+      echo '{"nodegroup":{"status":"ACTIVE"}}'
+    else
+      echo "An error occurred (ResourceNotFoundException) when calling the DescribeNodegroup operation: No node group found." >&2
+      exit 254
+    fi
+    ;;
+
+  *)
+    echo "mock aws (build-ami): unhandled call: ${service} ${action} $*" >&2
+    exit 1
+    ;;
+esac
