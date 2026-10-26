@@ -9,9 +9,10 @@ Scheduler with the NVIDIA Run:ai GPU Fractioning Operator.
 On October 13, 2026, NVIDIA announced that the full NVIDIA Run:ai platform is
 available as open-source software as part of NVIDIA DSX AI Factory. The platform
 can be adopted as an integrated whole or through modular components. This sample
-uses two modules, KAI Scheduler and GPU Fractioning Operator; it does not install
-the complete Run:ai platform. Community software does not include NVIDIA
-enterprise support.
+uses KAI Scheduler and GPU Fractioning Operator, two of the release's four
+modular components. KAI Resource Management and Workload Map are outside this
+walkthrough's scope. Community software does not include NVIDIA enterprise
+support.
 
 > This sample creates billable AWS resources, including an EKS control plane, a
 > NAT gateway, EC2 instances, EBS volumes, and an AMI snapshot. Run the cleanup
@@ -19,22 +20,44 @@ enterprise support.
 
 ## Architecture
 
-![Architecture showing a system node and a custom AL2023 G5 node running two GPU-memory contracts on one A10G](docs/runai-fractioning-architecture.png)
+![Architecture showing the EKS control plane in an AWS-managed VPC and private system and GPU workers in the customer VPC, with two GPU-memory contracts on one A10G](docs/runai-fractioning-architecture.png)
+
+[Open the editable architecture diagram](docs/runai-fractioning-architecture.svg)
 
 The disposable cluster contains one `m7i.large` system node and one On-Demand
 `g5.xlarge` GPU node. The G5 node uses the custom AL2023 image and exposes one
 NVIDIA A10G. Two Pods each receive an 8 GiB view of the same physical GPU and
 allocate 6 GiB concurrently.
 
+The diagram separates the AWS-managed control-plane VPC from the customer
+Amazon Virtual Private Cloud (Amazon VPC) that contains the private workers.
+The system node hosts the controllers and scheduler; node-level GPU Operator
+components and fractioning daemons also run on the GPU worker. The GPU worker
+combines the custom AL2023 host stack, containerd NRI, and NVIDIA MPS with
+per-Pod GPU-memory limits and metrics.
+
+This is the steady-state test architecture. The temporary Packer builder,
+public build subnet, and NAT gateway are not shown. The illustrated Region,
+`us-east-2`, is the validation Region, not a requirement. Other Regions require
+the same EKS version, base AMI, instance types, quota, and available capacity;
+they have not been validated by this sample. The AMI build targets x86_64.
+
 ## What the sample proves
 
-1. With the standard integer `nvidia.com/gpu` resource, one whole-GPU Pod runs
+1. In this sample's NVIDIA device-plugin baseline, sharing is disabled and the
+   A10G exposes one integer `nvidia.com/gpu` resource. One whole-GPU Pod runs
    and a second remains Pending.
 2. With two 8 GiB Run:ai memory contracts, both Pods run on the same node and
    GPU UUID.
 3. Each Pod successfully allocates 6 GiB within its contract.
 4. A 9 GiB allocation is rejected inside an 8 GiB contract.
 5. GPU fractioning metrics attribute memory consumption to each Pod.
+
+These are synthetic CUDA memory-allocation tests, not model-serving or
+throughput benchmarks. The baseline does not describe every Kubernetes GPU
+allocation mode: NVIDIA MIG, device-plugin sharing, and Dynamic Resource
+Allocation (DRA) are separate options with different requirements and
+isolation properties.
 
 ## Prerequisites
 
@@ -118,6 +141,9 @@ EKS_VERSION=1.36
 GPU_INSTANCE_TYPE=g5.xlarge
 NVIDIA_DRIVER_VERSION=615.71.10
 
+# Optional: trusted IPv4 CIDRs for the public EKS API
+# EKS_PUBLIC_ACCESS_CIDRS=YOUR_PUBLIC_IPV4/32
+
 # Authentication option 1: named profile
 # AWS_PROFILE=my-profile
 
@@ -131,7 +157,31 @@ NVIDIA_DRIVER_VERSION=615.71.10
 credential variables is set, the AWS CLI and Packer use their normal credential
 provider chains. `run.sh` exports the selected configuration to every stage.
 Generated kubeconfig, AMI IDs, rendered eksctl files, and logs are written to
-the ignored `.state` directory.
+the ignored `.state` directory. Newly created state files use owner-only
+permissions. Do not upload `.state`, local credentials, or raw logs without
+reviewing and redacting them.
+
+### Network access
+
+For a new cluster, `create-cluster` discovers the operator machine's public
+IPv4 address using `https://checkip.amazonaws.com` and restricts the public EKS
+API endpoint to that address (`/32`). Private endpoint access remains enabled
+for the workers. If discovery fails, creation stops rather than falling back
+to unrestricted access. For a stable VPN or automation egress range, set
+`EKS_PUBLIC_ACCESS_CIDRS` to trusted IPv4 CIDRs separated by commas, without
+spaces. Invalid CIDRs and `/0` access are rejected.
+
+The temporary Packer builder also restricts SSH to the public IP of the machine
+running Packer. Neither an internet-wide SSH rule nor an unrestricted EKS API
+source range is required by the sample. AWS and Kubernetes authentication are
+still required for API access.
+
+Keep your egress IP stable while creating and operating the lab. If it changes,
+update the cluster's allowed CIDRs using the [EKS endpoint access
+instructions](https://docs.aws.amazon.com/eks/latest/userguide/config-cluster-endpoint.html).
+Rerunning `create-cluster` refreshes kubeconfig for an existing cluster but does
+not change that cluster's endpoint restrictions. Do not reuse an existing
+production cluster for this walkthrough.
 
 ## Step 1 Create the disposable EKS cluster
 
@@ -195,9 +245,9 @@ cgroup filesystem, and NRI socket, and then removes itself.
 ./run.sh baseline
 ```
 
-Expected result: one Pod is Running and one is Pending because the default
-extended GPU resource is indivisible. The script records the state and removes
-both baseline Pods.
+Expected result: one Pod is Running and one is Pending because this baseline
+advertises one `nvidia.com/gpu` resource without sharing enabled. The script
+records the state and removes both baseline Pods.
 
 ## Step 6 Install KAI Scheduler and GPU Fractioning
 
@@ -285,7 +335,8 @@ Delete the image only after confirming that it is not needed elsewhere:
 
 ## Validated component set
 
-This implementation was validated on October 15, 2026 with:
+The first validation ran on October 15, 2026 with driver 615.71.09. The complete
+walkthrough was revalidated on October 22, 2026 with the component set below:
 
 | Component | Validated version |
 | --- | --- |
@@ -309,6 +360,12 @@ observed 615.71.09; the full walkthrough was re-validated end to end on
 615.71.10 after the stream advanced, with identical results. The build
 installs whatever point release the 615-open stream currently serves, so
 expect this value to move forward over time.
+
+The build discovers the installed R615 point release, version-locks it in the
+image, and records it in the AMI tag and node-group metadata. This avoids
+assuming that NVIDIA's repository still serves an older patch, but it does
+not guarantee compatibility with future releases. Rerun the acceptance tests
+after rebuilding or changing any component.
 
 ## Production considerations
 
@@ -337,7 +394,23 @@ kubernetes/   Namespaces, host inspection, and acceptance-test workloads
 scripts/      Ordered create, validate, observe, and cleanup commands
 run.sh        Single reader-facing command entry point
 walkthrough.env.example  Optional configuration template
+tests/        Mocked regression suites; no live AWS resources are required
 ```
+
+## Local regression tests
+
+With Bash and `jq` installed, run each suite separately:
+
+```bash
+bash tests/run-install-r615-tests.sh
+bash tests/run-build-ami-tests.sh
+bash tests/run-cleanup-tests.sh
+bash tests/run-network-access-tests.sh
+```
+
+The suites mock AWS and provisioning tools. They check driver drift, metadata
+propagation, cleanup safety, and network-access configuration; they do not
+replace a live walkthrough or measure GPU performance.
 
 ## References
 
@@ -346,6 +419,13 @@ walkthrough.env.example  Optional configuration template
 - [GPU Fractioning Operator](https://github.com/kai-scheduler/gpu-fractioning)
 - [Amazon EKS optimized accelerated AMIs](https://docs.aws.amazon.com/eks/latest/userguide/ml-eks-optimized-ami.html)
 - [Retrieve recommended Amazon EKS AMI IDs](https://docs.aws.amazon.com/eks/latest/userguide/retrieve-ami-id.html)
+- [Amazon EKS API endpoint access](https://docs.aws.amazon.com/eks/latest/userguide/config-cluster-endpoint.html)
+- [NVIDIA GPU sharing with GPU Operator](https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/latest/gpu-sharing.html)
+
+## Authors
+
+- Muru Bhaskaran, Sr. Specialist Solutions Architect, Amazon Web Services
+- Robert Ferrer, Specialist Solutions Architect, Amazon Web Services
 
 ## License
 

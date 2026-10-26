@@ -17,6 +17,7 @@ export AWS_REGION AWS_DEFAULT_REGION CLUSTER_NAME EKS_VERSION
 export GPU_INSTANCE_TYPE NVIDIA_DRIVER_VERSION KAI_VERSION GPU_OPERATOR_VERSION
 export KUBECONFIG
 
+umask 077
 mkdir -p "${STATE_DIR}"
 
 require_tool() {
@@ -86,11 +87,48 @@ run_kubectl_retry() {
   done
 }
 
+resolve_public_access_cidrs() {
+  local cidrs="${EKS_PUBLIC_ACCESS_CIDRS:-}"
+  local ip cidr octet
+  local entries octets
+  if [[ -z "${cidrs}" ]]; then
+    require_tool curl || return 1
+    if ! ip="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 https://checkip.amazonaws.com)"; then
+      echo "Cannot discover your public IPv4 address. Set EKS_PUBLIC_ACCESS_CIDRS to your trusted IPv4 CIDRs; refusing unrestricted API access." >&2
+      return 1
+    fi
+    cidrs="${ip}/32"
+  fi
+  if [[ "${cidrs}" == *, || "${cidrs}" == ,* || "${cidrs}" == *,,* || "${cidrs}" == *$'\n'* ]]; then
+    echo "EKS_PUBLIC_ACCESS_CIDRS must be a comma-separated list of IPv4 CIDRs without empty entries." >&2
+    return 1
+  fi
+  IFS=',' read -r -a entries <<<"${cidrs}"
+  for cidr in "${entries[@]}"; do
+    if [[ ! "${cidr}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([1-9]|[12][0-9]|3[0-2])$ ]]; then
+      echo "Invalid public API CIDR '${cidr}': use IPv4 with a prefix from /1 through /32, not unrestricted /0 access." >&2
+      return 1
+    fi
+    ip="${cidr%/*}"
+    IFS='.' read -r -a octets <<<"${ip}"
+    for octet in "${octets[@]}"; do
+      if [[ ! "${octet}" =~ ^(0|[1-9][0-9]{0,2})$ ]] || (( octet > 255 )); then
+        echo "Invalid IPv4 address in public API CIDR '${cidr}'." >&2
+        return 1
+      fi
+    done
+  done
+  printf '%s\n' "${cidrs}"
+}
+
 render_cluster_config() {
+  local cidrs="${1:?Pass validated public API CIDRs to render_cluster_config}"
+  local cidrs_yaml="[\"${cidrs//,/\", \"}\"]"
   sed \
     -e "s/__CLUSTER_NAME__/${CLUSTER_NAME}/g" \
     -e "s/__AWS_REGION__/${AWS_REGION}/g" \
     -e "s/__EKS_VERSION__/${EKS_VERSION}/g" \
+    -e "s|__EKS_PUBLIC_ACCESS_CIDRS__|${cidrs_yaml}|g" \
     "${ROOT_DIR}/config/eksctl-cluster.yaml.tpl" \
     >"${STATE_DIR}/eksctl-cluster.yaml"
 }

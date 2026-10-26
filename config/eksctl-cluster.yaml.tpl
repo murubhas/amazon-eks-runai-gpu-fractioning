@@ -17,6 +17,7 @@ vpc:
   clusterEndpoints:
     publicAccess: true
     privateAccess: true
+  publicAccessCIDRs: __EKS_PUBLIC_ACCESS_CIDRS__
   nat:
     gateway: Single
 

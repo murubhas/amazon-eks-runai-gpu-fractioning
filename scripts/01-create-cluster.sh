@@ -8,17 +8,21 @@ for tool in aws eksctl kubectl; do
 done
 require_aws_identity
 
-render_cluster_config
-
-if aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" >/dev/null 2>&1; then
+if cluster_description="$(aws eks describe-cluster --name "${CLUSTER_NAME}" --region "${AWS_REGION}" 2>&1)"; then
   echo "EKS cluster ${CLUSTER_NAME} already exists; skipping creation."
-else
+elif [[ "${cluster_description}" == *ResourceNotFoundException* ]]; then
+  public_access_cidrs="$(resolve_public_access_cidrs)"
+  render_cluster_config "${public_access_cidrs}"
+  echo "Public EKS API access is restricted to ${public_access_cidrs}; private endpoint access remains enabled."
   eksctl create cluster \
     --config-file "${STATE_DIR}/eksctl-cluster.yaml" \
     --kubeconfig "${KUBECONFIG}" \
     --set-kubeconfig-context=false \
     --timeout 60m \
     --color false
+else
+  echo "Cannot determine whether ${CLUSTER_NAME} exists; refusing creation: ${cluster_description}" >&2
+  exit 1
 fi
 
 # Always (re)write the kubeconfig entry from the live cluster description,

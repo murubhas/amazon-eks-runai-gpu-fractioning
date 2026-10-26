@@ -48,6 +48,8 @@ source "amazon-ebs" "eks_al2023_r615" {
   ssh_username                = "ec2-user"
   subnet_id                   = var.subnet_id
 
+  temporary_security_group_source_public_ip = true
+
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
