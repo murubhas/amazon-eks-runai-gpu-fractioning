@@ -1,10 +1,13 @@
 # NVIDIA Run:ai GPU Fractioning on Amazon EKS
 
-This sample demonstrates how to place two GPU-memory-bounded Kubernetes Pods
-on one NVIDIA A10G in Amazon EKS. It builds a custom EKS 1.36 Amazon Linux 2023
-(AL2023) worker image with the NVIDIA R615 open driver, installs NVIDIA GPU
-Operator without replacing the image-owned driver or toolkit, and deploys KAI
-Scheduler with the NVIDIA Run:ai GPU Fractioning Operator.
+This sample demonstrates GPU memory sharing among Kubernetes Pods on Amazon
+EKS using compatible NVIDIA GPUs. The validated walkthrough places two
+GPU-memory-bounded Pods on one NVIDIA A10G in a `g5.xlarge` worker. It builds a
+custom EKS 1.36 Amazon Linux 2023 (AL2023) image with the NVIDIA R615 open
+driver, installs NVIDIA GPU Operator without replacing the image-owned driver
+or toolkit, and deploys KAI Scheduler with the NVIDIA Run:ai GPU Fractioning
+Operator. Other GPU configurations must meet the upstream compatibility
+requirements and have not been validated by this sample.
 
 On October 13, 2026, NVIDIA announced that the full NVIDIA Run:ai platform is
 available as open-source software as part of NVIDIA DSX AI Factory. The platform
